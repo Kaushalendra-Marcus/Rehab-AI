@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System dependencies including FFmpeg for PyAV / aiortc
+# Minimal system deps - only runtime libs, no dev headers
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir cython
 
 COPY backend/ .
 
-# Core packages
+# Core packages (no torch yet)
 RUN pip install --no-cache-dir \
     fastapi \
     "uvicorn[standard]" \
@@ -54,21 +54,23 @@ RUN pip install --no-cache-dir \
     cartesia \
     stratz
 
-# av (PyAV) must be installed before aiortc/getstream
+# Install getstream WITHOUT [telemetry,webrtc] extras — avoids torch + torchaudio (~3GB saved)
+RUN pip install --no-cache-dir getstream
+
+# av (PyAV) then aiortc
 RUN pip install --no-cache-dir av
+RUN pip install --no-cache-dir "aiortc>=1.13.0"
 
-# aiortc and getstream with webrtc/telemetry
-RUN pip install --no-cache-dir \
-    "aiortc>=1.13.0" \
-    "getstream[telemetry,webrtc]"
-
-# daily-python separately
+# daily-python
 RUN pip install --no-cache-dir daily-python
 
-# Ultralytics + onnxruntime
+# Install CPU-only torch explicitly BEFORE ultralytics (prevents full CUDA torch download)
 RUN pip install --no-cache-dir \
-    onnxruntime \
-    ultralytics
+    torch torchvision \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# onnxruntime + ultralytics (will reuse torch above)
+RUN pip install --no-cache-dir onnxruntime ultralytics
 
 # Vision agents plugins
 RUN pip install --no-cache-dir \
