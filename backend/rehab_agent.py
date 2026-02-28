@@ -1,6 +1,5 @@
 ﻿"""
 RehabAI - Real-time Physical Therapy Coach Agent
-Uses: anthropic (LLM), deepgram (STT), elevenlabs (TTS), getstream (Edge)
 """
 import os
 import asyncio
@@ -49,7 +48,7 @@ Use this to give precise real-time voice coaching.
 
 async def run_agent(call_id: str, call_type: str = "default", exercise: str = "general"):
     from vision_agents.core import Agent, User
-    from vision_agents.plugins import getstream, anthropic, deepgram, elevenlabs
+    from vision_agents.plugins import getstream, deepgram, elevenlabs, anthropic
 
     agent_id    = os.environ.get("STREAM_AGENT_ID", "rehab-ai-agent")
     api_key     = os.environ["STREAM_API_KEY"]
@@ -60,46 +59,31 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
     stream_client = AsyncStream(api_key=api_key, api_secret=api_secret)
     if agent_token:
         stream_client.token = agent_token
-        print(f"[Agent] ✅ Authenticated as '{agent_id}'")
-
-    # Fetch TURN credentials from Stream (needed for Railway's network)
-    try:
-        ice_response = await stream_client.video.get_call_edge_server(
-            call_id=call_id,
-            call_type=call_type,
-        )
-        ice_servers = ice_response.ice_servers if hasattr(ice_response, 'ice_servers') else []
-        print(f"[Agent] ✅ TURN/ICE servers fetched: {len(ice_servers)}")
-    except Exception as e:
-        print(f"[Agent] ⚠️  Could not fetch TURN servers ({e}), using STUN only")
-        ice_servers = [
-            {"urls": "stun:stun.l.google.com:19302"},
-            {"urls": "stun:stun1.l.google.com:19302"},
-        ]
+        print(f"[Agent] Authenticated as '{agent_id}'")
 
     # Edge
     edge = getstream.Edge()
     edge.client = stream_client
-    print(f"[Agent] ✅ Edge: getstream.Edge")
+    print(f"[Agent] Edge: getstream")
 
-    # LLM
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-5")
+    # LLM - use anthropic (claude)
+    model = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5")
     llm = anthropic.LLM(model=model)
-    print(f"[Agent] ✅ LLM: anthropic {model}")
+    print(f"[Agent] LLM: anthropic {model}")
 
     # STT
     stt_model = os.environ.get("DEEPGRAM_MODEL", "nova-2")
     stt = deepgram.STT(model=stt_model)
-    print(f"[Agent] ✅ STT: deepgram {stt_model}")
+    print(f"[Agent] STT: deepgram {stt_model}")
 
     # TTS
     try:
         tts = elevenlabs.TTS()
-        print("[Agent] ✅ TTS: elevenlabs")
+        print("[Agent] TTS: elevenlabs")
     except Exception as e:
         print(f"[Agent] elevenlabs failed ({e}), using deepgram")
         tts = deepgram.TTS(model=os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-orion-en"))
-        print("[Agent] ✅ TTS: deepgram")
+        print("[Agent] TTS: deepgram")
 
     agent = Agent(
         edge=edge,
@@ -110,11 +94,11 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
         tts=tts,
     )
 
-    print(f"[Agent] ✅ Agent created. Joining {call_type}:{call_id}...")
+    print(f"[Agent] Joining {call_type}:{call_id}...")
     call = await agent.create_call(call_type, call_id)
 
     async with agent.join(call):
-        print("[Agent] ✅ Joined! Sending greeting...")
+        print("[Agent] Joined! Sending greeting...")
         await agent.simple_response(
             f"REHAB AI online. {exercise.replace('_', ' ').title()} protocol loaded. "
             "Initiating analysis. Assume starting position when ready."
@@ -122,7 +106,7 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
         print("[Agent] Monitoring session...")
         await agent.finish()
 
-    print("[Agent] ✅ Session complete.")
+    print("[Agent] Session complete.")
 
 
 if __name__ == "__main__":
