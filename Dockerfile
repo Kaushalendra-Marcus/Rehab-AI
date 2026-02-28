@@ -82,3 +82,4 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir --no-deps vision-agents
 
 CMD sh -c "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}"
+
