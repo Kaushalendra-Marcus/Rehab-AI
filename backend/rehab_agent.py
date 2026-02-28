@@ -48,7 +48,7 @@ Use this to give precise real-time voice coaching.
 
 async def run_agent(call_id: str, call_type: str = "default", exercise: str = "general"):
     from vision_agents.core import Agent, User
-    from vision_agents.plugins import getstream, deepgram, elevenlabs, anthropic
+    from vision_agents.plugins import getstream, deepgram, elevenlabs
 
     agent_id    = os.environ.get("STREAM_AGENT_ID", "rehab-ai-agent")
     api_key     = os.environ["STREAM_API_KEY"]
@@ -64,12 +64,37 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
     # Edge
     edge = getstream.Edge()
     edge.client = stream_client
-    print(f"[Agent] Edge: getstream")
 
-    # LLM - use anthropic (claude)
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5")
-    llm = anthropic.LLM(model=model)
-    print(f"[Agent] LLM: anthropic {model}")
+    # LLM — try Gemini first, fallback to Anthropic
+    llm = None
+    google_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+
+    if google_key:
+        try:
+            from vision_agents.core import llm as llm_mod
+            # Try different Gemini class names
+            for cls_name in ["GeminiLLM", "Gemini", "GoogleLLM", "GoogleGeminiLLM"]:
+                cls = getattr(llm_mod, cls_name, None)
+                if cls:
+                    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+                    llm = cls(model=model)
+                    print(f"[Agent] LLM: {cls_name} ({model})")
+                    break
+        except Exception as e:
+            print(f"[Agent] Gemini failed: {e}")
+
+    if llm is None and anthropic_key:
+        try:
+            from vision_agents.plugins import anthropic as anthropic_plugin
+            model = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5")
+            llm = anthropic_plugin.LLM(model=model)
+            print(f"[Agent] LLM: anthropic {model}")
+        except Exception as e:
+            print(f"[Agent] Anthropic failed: {e}")
+
+    if llm is None:
+        raise RuntimeError("No LLM available! Set GOOGLE_API_KEY or ANTHROPIC_API_KEY")
 
     # STT
     stt_model = os.environ.get("DEEPGRAM_MODEL", "nova-2")
