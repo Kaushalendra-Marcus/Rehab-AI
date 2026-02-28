@@ -1,4 +1,4 @@
-"""
+﻿"""
 RehabAI - Real-time Physical Therapy Coach Agent
 Built with Vision Agents SDK
 
@@ -26,19 +26,19 @@ if sys.platform == "win32":
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 INSTRUCTIONS = """
-You are REHAB AI — an expert real-time physical therapy coach. You speak with the calm,
+You are REHAB AI â€” an expert real-time physical therapy coach. You speak with the calm,
 precise, and occasionally dry-humored voice of J.A.R.V.I.S from Iron Man.
 
 You watch patients perform rehabilitation exercises via their camera. A YOLO pose detection
-model provides skeleton/pose data — use this to give precise real-time voice coaching.
+model provides skeleton/pose data â€” use this to give precise real-time voice coaching.
 
 ## Supported Exercises
-1. KNEE_BEND         — Post knee surgery recovery (target: 90 degree knee flexion)
-2. SHOULDER_ROTATION — Shoulder rehabilitation (full 180 degree arc)
-3. HIP_ABDUCTION     — Hip replacement recovery (45 degree abduction)
-4. ANKLE_PUMP        — DVT prevention
-5. QUAD_SET          — Quadriceps strengthening
-6. SLR               — Straight leg raise (45 degree lift, knee straight)
+1. KNEE_BEND         â€” Post knee surgery recovery (target: 90 degree knee flexion)
+2. SHOULDER_ROTATION â€” Shoulder rehabilitation (full 180 degree arc)
+3. HIP_ABDUCTION     â€” Hip replacement recovery (45 degree abduction)
+4. ANKLE_PUMP        â€” DVT prevention
+5. QUAD_SET          â€” Quadriceps strengthening
+6. SLR               â€” Straight leg raise (45 degree lift, knee straight)
 
 ## Coaching Rules
 - Give feedback ONLY when you detect something worth saying
@@ -50,15 +50,19 @@ model provides skeleton/pose data — use this to give precise real-time voice c
 
 ## Jarvis Tone
 - "Initiating analysis. Assume starting position when ready."
-- "Angle at 67 degrees. You need 90. Push deeper — there you go."
+- "Angle at 67 degrees. You need 90. Push deeper â€” there you go."
 - "I am detecting shoulder compensation. Keep your torso still."
 - "Excellent. That is your best repetition today."
 """
 
 
 async def run_agent(call_id: str, call_type: str = "default", exercise: str = "general"):
-    # ✅ ALL imports inside async — EventManager needs running loop
+    # âœ… ALL imports inside async â€” EventManager needs running loop
     from vision_agents.core import Agent, User
+    # DEBUG - print available plugins
+    import vision_agents.plugins as _p
+    import pkgutil
+    print("[Agent] Available plugins:", [m.name for m in pkgutil.iter_modules(_p.__path__)])
     from vision_agents.plugins import getstream, gemini, deepgram, ultralytics
     from getstream import AsyncStream
 
@@ -73,9 +77,9 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
     stream_client = AsyncStream(api_key=api_key, api_secret=api_secret)
     if agent_token:
         stream_client.token = agent_token
-        print(f"[Agent] ✅ Authenticated as user '{agent_id}' via pre-generated token")
+        print(f"[Agent] âœ… Authenticated as user '{agent_id}' via pre-generated token")
     else:
-        print(f"[Agent] ⚠️  No STREAM_AGENT_TOKEN — falling back to server-side auth")
+        print(f"[Agent] âš ï¸  No STREAM_AGENT_TOKEN â€” falling back to server-side auth")
 
     # Windows fix: use default DNS resolver instead of aiodns
     import aiohttp
@@ -87,11 +91,11 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
     llm_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     print(f"[Agent] Using LLM: {llm_model}")
 
-    # STT — vision_agents uses Deepgram v2 API, model must be "flux-general-en"
+    # STT â€” vision_agents uses Deepgram v2 API, model must be "flux-general-en"
     stt_model = os.environ.get("DEEPGRAM_MODEL", "flux-general-en")
     print(f"[Agent] Using STT: {stt_model}")
 
-    # TTS — Deepgram Aura (free with $200 credit)
+    # TTS â€” Deepgram Aura (free with $200 credit)
     tts_model = os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-orion-en")
     print(f"[Agent] Using TTS: Deepgram {tts_model}")
     tts = deepgram.TTS(model=tts_model)
@@ -135,5 +139,5 @@ if __name__ == "__main__":
         print("ERROR: CALL_ID env var is required")
         exit(1)
 
-    print(f"[RehabAI Agent] Starting — call_id={call_id} exercise={exercise}")
+    print(f"[RehabAI Agent] Starting â€” call_id={call_id} exercise={exercise}")
     asyncio.run(run_agent(call_id, call_type, exercise))
