@@ -2,7 +2,7 @@
 
 WORKDIR /app
 
-# Minimal system deps - only runtime libs, no dev headers
+# Full build deps needed for PyAV (required by vision-agents-plugins-getstream)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir cython
 
 COPY backend/ .
 
-# Core packages (no torch yet)
+# Core packages
 RUN pip install --no-cache-dir \
     fastapi \
     "uvicorn[standard]" \
@@ -54,32 +54,36 @@ RUN pip install --no-cache-dir \
     cartesia \
     stratz
 
-# Install getstream WITHOUT [telemetry,webrtc] extras â€” avoids torch + torchaudio (~3GB saved)
+# getstream plain (no webrtc extras - avoids torch)
 RUN pip install --no-cache-dir getstream
 
-# av (PyAV) then aiortc
+# PyAV first (needs ffmpeg dev headers above)
 RUN pip install --no-cache-dir av
+
+# aiortc
 RUN pip install --no-cache-dir "aiortc>=1.13.0"
 
 # daily-python
 RUN pip install --no-cache-dir daily-python
 
-# Install CPU-only torch explicitly BEFORE ultralytics (prevents full CUDA torch download)
+# CPU-only torch (needed by ultralytics, much smaller than CUDA)
 RUN pip install --no-cache-dir \
     torch torchvision \
     --index-url https://download.pytorch.org/whl/cpu
 
-# onnxruntime + ultralytics (will reuse torch above)
+# onnxruntime + ultralytics
 RUN pip install --no-cache-dir onnxruntime ultralytics
 
-# Vision agents plugins
+# vision-agents plugins - including getstream (concrete EdgeTransport impl)
 RUN pip install --no-cache-dir \
     vision-agents-plugins-deepgram \
     vision-agents-plugins-elevenlabs \
     vision-agents-plugins-anthropic \
-    vision-agents-plugins-cartesia
+    vision-agents-plugins-cartesia \
+    vision-agents-plugins-getstream
 
-RUN pip install --no-cache-dir --no-deps vision-agents
+# vision-agents with all deps, then remove fal
+RUN pip install --no-cache-dir vision-agents && \
+    pip uninstall -y vision-agents-plugins-fal 2>/dev/null || true
 
-CMD sh -c "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}"
-
+CMD sh -c 'uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}'
