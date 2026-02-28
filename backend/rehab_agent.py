@@ -77,7 +77,7 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
             for cls_name in ["GeminiLLM", "Gemini", "GoogleLLM", "GoogleGeminiLLM"]:
                 cls = getattr(llm_mod, cls_name, None)
                 if cls:
-                    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+                    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
                     llm = cls(model=model)
                     print(f"[Agent] LLM: {cls_name} ({model})")
                     break
