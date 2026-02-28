@@ -1,23 +1,17 @@
 ﻿"""
 RehabAI - Real-time Physical Therapy Coach Agent
-Built with Vision Agents SDK
-
-Spawned as subprocess by server.py. Required env vars:
-  CALL_ID, CALL_TYPE, EXERCISE
-  STREAM_API_KEY, STREAM_API_SECRET
-  STREAM_AGENT_TOKEN  <- pre-generated JWT for "rehab-ai-agent" user
-  STREAM_AGENT_ID     <- defaults to "rehab-ai-agent"
-  ANTHROPIC_API_KEY (or GOOGLE_API_KEY), DEEPGRAM_API_KEY, ELEVENLABS_API_KEY
+Uses: anthropic (LLM), deepgram (STT), elevenlabs (TTS)
+Edge: vision_agents.core.edge.call concrete implementation
 """
 import os
 import asyncio
 import sys
 import pkgutil
 import importlib
+import inspect
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Windows: ProactorEventLoop required for subprocess/socket support
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     import io
@@ -57,111 +51,52 @@ Use this to give precise real-time voice coaching.
 """
 
 
-def _find_edge(stream_client):
-    """Find the correct GetStream edge class in vision_agents.core.edge."""
+def _find_concrete_edge(stream_client):
+    """
+    Find concrete (non-abstract, non-Protocol) edge implementation
+    by scanning vision_agents.core.edge submodules.
+    """
     from vision_agents.core import edge as _edge_mod
 
-    members = [x for x in dir(_edge_mod) if not x.startswith("_")]
-    print(f"[Agent] vision_agents.core.edge members: {members}")
-
-    # Try known class names
-    for cls_name in ["GetStreamEdge", "StreamEdge", "Edge", "GetStream", "VideoEdge"]:
-        cls = getattr(_edge_mod, cls_name, None)
-        if cls is not None:
-            print(f"[Agent] ✅ Found edge class: vision_agents.core.edge.{cls_name}")
+    # Scan all submodules for concrete classes
+    for mod_info in pkgutil.iter_modules(_edge_mod.__path__):
+        mod = importlib.import_module(f"vision_agents.core.edge.{mod_info.name}")
+        for name, obj in inspect.getmembers(mod, inspect.isclass):
+            if name.startswith("_"):
+                continue
+            # Skip abstract classes and Protocols
+            if inspect.isabstract(obj):
+                continue
+            if hasattr(obj, "__protocol_attrs__"):
+                continue
+            # Must be defined in this module (not imported)
+            if obj.__module__ != mod.__name__:
+                continue
+            print(f"[Agent] Trying edge: {mod_info.name}.{name}")
             try:
-                return cls(client=stream_client)
-            except TypeError:
-                edge = cls()
-                edge.client = stream_client
-                return edge
-
-    # EdgeTransport is the correct edge class for GetStream
-    for cls_name in ["EdgeTransport", "Call"]:
-        cls = getattr(_edge_mod, cls_name, None)
-        if cls is not None:
-            print(f"[Agent] ✅ Found edge class: vision_agents.core.edge.{cls_name}")
-            try:
-                return cls(client=stream_client)
-            except TypeError:
+                instance = obj(client=stream_client)
+                print(f"[Agent] ✅ Edge created: edge.{mod_info.name}.{name}")
+                return instance
+            except TypeError as e1:
                 try:
-                    inst = cls()
-                    inst.client = stream_client
-                    return inst
+                    instance = obj()
+                    instance.client = stream_client
+                    print(f"[Agent] ✅ Edge created (no-arg): edge.{mod_info.name}.{name}")
+                    return instance
                 except Exception as e2:
-                    print(f"[Agent] {cls_name} init failed: {e2}")
+                    print(f"[Agent] {name} failed: {e1} / {e2}")
+            except Exception as e:
+                print(f"[Agent] {name} failed: {e}")
 
-    raise RuntimeError(f"No edge class found. Available: {members}")
-
-
-def _find_llm():
-    """Find Gemini LLM in vision_agents.core.llm, fallback to anthropic plugin."""
-    from vision_agents.core import llm as _llm_mod
-
-    members = [x for x in dir(_llm_mod) if not x.startswith("_")]
-    print(f"[Agent] vision_agents.core.llm members: {members}")
-
-    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-
-    for cls_name in ["GeminiLLM", "Gemini", "GoogleLLM", "GoogleGeminiLLM", "GeminiFlash"]:
-        cls = getattr(_llm_mod, cls_name, None)
-        if cls is not None:
-            print(f"[Agent] ✅ Using LLM: core.llm.{cls_name}(model={gemini_model})")
-            return cls(model=gemini_model)
-
-    # Fallback: anthropic plugin (confirmed available)
-    print("[Agent] ⚠️  No Gemini in core.llm — using anthropic plugin fallback")
-    from vision_agents.plugins import anthropic
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-5")
-    print(f"[Agent] ✅ Using anthropic.LLM(model={model})")
-    return anthropic.LLM(model=model)
-
-
-def _get_stt():
-    from vision_agents.plugins import deepgram
-    model = os.environ.get("DEEPGRAM_MODEL", "nova-2")
-    print(f"[Agent] ✅ STT: deepgram {model}")
-    return deepgram.STT(model=model)
-
-
-def _get_tts():
-    try:
-        from vision_agents.plugins import elevenlabs
-        tts = elevenlabs.TTS()
-        print("[Agent] ✅ TTS: elevenlabs")
-        return tts
-    except Exception as e:
-        print(f"[Agent] elevenlabs TTS failed ({e}) — trying deepgram TTS")
-
-    from vision_agents.plugins import deepgram
-    model = os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-orion-en")
-    print(f"[Agent] ✅ TTS: deepgram {model}")
-    return deepgram.TTS(model=model)
-
-
-def _get_processors():
-    """YOLO pose processor — optional."""
-    try:
-        from vision_agents.core import processors as _proc_mod
-        members = [x for x in dir(_proc_mod) if not x.startswith("_")]
-        print(f"[Agent] processors members: {members}")
-        for cls_name in ["YOLOPoseProcessor", "UltralyticsProcessor", "PoseProcessor"]:
-            cls = getattr(_proc_mod, cls_name, None)
-            if cls is not None:
-                proc = cls(model_path="yolo11n-pose.pt", device="cpu", conf_threshold=0.5, fps=1)
-                print(f"[Agent] ✅ Processor: {cls_name}")
-                return [proc]
-    except Exception as e:
-        print(f"[Agent] ⚠️  No processor available ({e}) — running without YOLO")
-    return []
+    raise RuntimeError(
+        "No concrete edge implementation found. "
+        "Check vision_agents.core.edge submodules in logs above."
+    )
 
 
 async def run_agent(call_id: str, call_type: str = "default", exercise: str = "general"):
     from vision_agents.core import Agent, User
-
-    # Log available plugins for debugging
-    import vision_agents.plugins as _p
-    print("[Agent] Available plugins:", [m.name for m in pkgutil.iter_modules(_p.__path__)])
+    from vision_agents.plugins import anthropic, deepgram, elevenlabs
 
     agent_id    = os.environ.get("STREAM_AGENT_ID", "rehab-ai-agent")
     api_key     = os.environ["STREAM_API_KEY"]
@@ -173,21 +108,35 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
     if agent_token:
         stream_client.token = agent_token
         print(f"[Agent] ✅ Authenticated as '{agent_id}'")
-    else:
-        print(f"[Agent] ⚠️  No STREAM_AGENT_TOKEN")
 
-    edge       = _find_edge(stream_client)
-    llm        = _find_llm()
-    stt        = _get_stt()
-    tts        = _get_tts()
-    processors = _get_processors()
+    # Edge — scan for concrete implementation
+    edge = _find_concrete_edge(stream_client)
+
+    # LLM — anthropic directly (gemini not available)
+    model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-5")
+    llm = anthropic.LLM(model=model)
+    print(f"[Agent] ✅ LLM: anthropic {model}")
+
+    # STT
+    stt_model = os.environ.get("DEEPGRAM_MODEL", "nova-2")
+    stt = deepgram.STT(model=stt_model)
+    print(f"[Agent] ✅ STT: deepgram {stt_model}")
+
+    # TTS
+    try:
+        tts = elevenlabs.TTS()
+        print("[Agent] ✅ TTS: elevenlabs")
+    except Exception as e:
+        print(f"[Agent] elevenlabs failed ({e}), using deepgram TTS")
+        tts_model = os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-orion-en")
+        tts = deepgram.TTS(model=tts_model)
+        print(f"[Agent] ✅ TTS: deepgram {tts_model}")
 
     agent = Agent(
         edge=edge,
         agent_user=User(name="REHAB AI", id=agent_id),
         instructions=INSTRUCTIONS + f"\n\nCurrent exercise: {exercise}",
         llm=llm,
-        processors=processors,
         stt=stt,
         tts=tts,
     )
@@ -196,15 +145,15 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
     call = await agent.create_call(call_type, call_id)
 
     async with agent.join(call):
-        print(f"[Agent] ✅ Joined! Sending greeting...")
+        print("[Agent] ✅ Joined! Sending greeting...")
         await agent.simple_response(
             f"REHAB AI online. {exercise.replace('_', ' ').title()} protocol loaded. "
             "Initiating analysis. Assume starting position when ready."
         )
-        print(f"[Agent] Greeting sent. Monitoring session...")
+        print("[Agent] Monitoring session...")
         await agent.finish()
 
-    print(f"[Agent] ✅ Session complete.")
+    print("[Agent] ✅ Session complete.")
 
 
 if __name__ == "__main__":
