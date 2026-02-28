@@ -26,6 +26,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://rehab-ai-physical-therapy-system.vercel.app",
+        "https://rehab-ai-physical-therapy-system.vercel.app",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
@@ -165,3 +166,4 @@ def _launch_agent_thread(call_id: str, exercise: str, agent_token: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+
