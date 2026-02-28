@@ -8,15 +8,13 @@ if sys.platform == "win32":
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 async def run_agent(call_id: str, call_type: str = "default", exercise: str = "general"):
-    import vision_agents.llm as _llm
-    import vision_agents.edge as _edge
-    import vision_agents.tts as _tts
-    import vision_agents.stt as _stt
+    from vision_agents.core import llm as _llm, edge as _edge, stt as _stt, tts as _tts
 
     print("[Agent] llm members:", [x for x in dir(_llm) if not x.startswith("_")])
     print("[Agent] edge submodules:", [m.name for m in pkgutil.iter_modules(_edge.__path__)])
-    print("[Agent] tts members:", [x for x in dir(_tts) if not x.startswith("_")])
+    print("[Agent] edge members:", [x for x in dir(_edge) if not x.startswith("_")])
     print("[Agent] stt members:", [x for x in dir(_stt) if not x.startswith("_")])
+    print("[Agent] tts members:", [x for x in dir(_tts) if not x.startswith("_")])
 
 if __name__ == "__main__":
     call_id = os.environ.get("CALL_ID")
