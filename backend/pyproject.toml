@@ -1,0 +1,32 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "RehabAI - Real-Time Physical Therapy Coach"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-dotenv>=1.0.0",
+    "stream-chat>=4.20.0",
+    # vision-agents with ALL needed plugins
+    "vision-agents[gemini,getstream,ultralytics,elevenlabs,deepgram]>=0.3.8",
+    "torch>=2.3.0",
+    "torchvision>=0.18.0",
+    "edge-tts>=7.2.7",
+]
+
+# ── CPU-only PyTorch (no 3.5GB CUDA downloads on WSL/no-GPU) ──────────────────
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu" }
+]
+torchvision = [
+    { index = "pytorch-cpu" }
+]
+
