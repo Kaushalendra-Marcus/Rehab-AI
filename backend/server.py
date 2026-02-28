@@ -1,12 +1,12 @@
 ﻿"""
 RehabAI Backend API Server
-Run: uv run uvicorn server:app --reload --port 8000
 """
 import os
 import sys
 import asyncio
 import threading
 import subprocess
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -21,13 +21,7 @@ app = FastAPI(title="RehabAI Backend", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://rehab-ai-physical-therapy-system.vercel.app",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=["*"],  # Allow all origins for now
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,16 +34,9 @@ def _get_chat_client() -> StreamChat:
     key = os.environ.get("STREAM_API_KEY")
     secret = os.environ.get("STREAM_API_SECRET")
     if not key or not secret:
-        raise HTTPException(
-            status_code=500,
-            detail="STREAM_API_KEY or STREAM_API_SECRET missing in .env"
-        )
+        raise HTTPException(status_code=500, detail="STREAM keys missing")
     return StreamChat(api_key=key, api_secret=secret)
 
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health():
@@ -58,12 +45,9 @@ async def health():
         "env": {
             k: ("SET" if os.environ.get(k) else "MISSING")
             for k in [
-                "STREAM_API_KEY",
-                "STREAM_API_SECRET",
-                "GOOGLE_API_KEY",
-                "ELEVENLABS_API_KEY",
-                "DEEPGRAM_API_KEY",
-                "ANTHROPIC_API_KEY",
+                "STREAM_API_KEY", "STREAM_API_SECRET",
+                "GOOGLE_API_KEY", "ELEVENLABS_API_KEY",
+                "DEEPGRAM_API_KEY", "ANTHROPIC_API_KEY",
             ]
         },
     }
@@ -71,7 +55,6 @@ async def health():
 
 @app.get("/token")
 async def get_token(user_id: str = "patient-001"):
-    """Return a Stream user token for the browser client."""
     try:
         chat = _get_chat_client()
         chat.upsert_users([
@@ -103,9 +86,8 @@ async def start_agent(req: StartAgentRequest):
         chat = StreamChat(api_key=key, api_secret=secret)
         chat.upsert_user({"id": AGENT_USER_ID, "name": "REHAB AI", "role": "admin"})
         agent_token = chat.create_token(AGENT_USER_ID)
-        print(f"[RehabAI] ✅ Agent user upserted + token generated for '{AGENT_USER_ID}'")
+        print(f"[RehabAI] ✅ Agent token generated for '{AGENT_USER_ID}'")
     except Exception as e:
-        print(f"[RehabAI] ❌ Stream setup failed: {e}")
         raise HTTPException(status_code=500, detail=f"Stream setup failed: {e}")
 
     print(f"\n{'='*50}")
@@ -116,12 +98,7 @@ async def start_agent(req: StartAgentRequest):
     return {"status": "agent_launching", "call_id": req.call_id}
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
 def _launch_agent_thread(call_id: str, exercise: str, agent_token: str):
-    """Launch agent as subprocess in a background thread."""
     agent_script = Path(__file__).parent / "rehab_agent.py"
 
     env = {
@@ -134,6 +111,9 @@ def _launch_agent_thread(call_id: str, exercise: str, agent_token: str):
     }
 
     def run_in_thread():
+        # Wait 4 seconds for patient to fully join the call first
+        print(f"[RehabAI] Waiting 4s for patient to join call...")
+        time.sleep(4)
         try:
             proc = subprocess.Popen(
                 [sys.executable, str(agent_script)],
