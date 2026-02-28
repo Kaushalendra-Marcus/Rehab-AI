@@ -52,50 +52,66 @@ Use this to give precise real-time voice coaching.
 
 def _find_concrete_edge(stream_client):
     """
-    Find concrete EdgeTransport subclass in vision_agents.core.edge submodules.
-    Only picks classes that are actual subclasses of EdgeTransport (not abstract, not events).
+    Force-import all submodules of vision_agents.core.edge first,
+    then find concrete EdgeTransport subclass.
     """
+    from vision_agents.core import edge as _edge_mod
     from vision_agents.core.edge import EdgeTransport
 
-    submodule_names = ["edge_transport", "call"]  # most likely locations first
-
-    for mod_name in submodule_names:
+    # Force-import ALL submodules so subclasses get registered
+    for mod_info in pkgutil.iter_modules(_edge_mod.__path__):
         try:
-            mod = importlib.import_module(f"vision_agents.core.edge.{mod_name}")
-        except ImportError:
-            continue
+            importlib.import_module(f"vision_agents.core.edge.{mod_info.name}")
+            print(f"[Agent] Imported edge submodule: {mod_info.name}")
+        except Exception as e:
+            print(f"[Agent] Could not import edge.{mod_info.name}: {e}")
 
+    # Now check registered subclasses
+    all_subs = EdgeTransport.__subclasses__()
+    print(f"[Agent] EdgeTransport subclasses after import: {[c.__name__ for c in all_subs]}")
+
+    for cls in all_subs:
+        if inspect.isabstract(cls):
+            continue
+        print(f"[Agent] Trying: {cls.__name__}")
+        try:
+            instance = cls(client=stream_client)
+            print(f"[Agent] ✅ Edge: {cls.__name__}(client=...)")
+            return instance
+        except TypeError:
+            try:
+                instance = cls()
+                instance.client = stream_client
+                print(f"[Agent] ✅ Edge: {cls.__name__}() + .client")
+                return instance
+            except Exception as e:
+                print(f"[Agent] {cls.__name__} failed: {e}")
+        except Exception as e:
+            print(f"[Agent] {cls.__name__} failed: {e}")
+
+    # Also try direct class scan in each submodule as final fallback
+    for mod_info in pkgutil.iter_modules(_edge_mod.__path__):
+        mod = importlib.import_module(f"vision_agents.core.edge.{mod_info.name}")
         for name, obj in inspect.getmembers(mod, inspect.isclass):
-            # Must be a subclass of EdgeTransport but not EdgeTransport itself
-            if obj is EdgeTransport:
-                continue
-            if not issubclass(obj, EdgeTransport):
+            if obj is EdgeTransport or not issubclass(obj, EdgeTransport):
                 continue
             if inspect.isabstract(obj):
                 continue
-
-            print(f"[Agent] Trying edge: {mod_name}.{name}")
+            print(f"[Agent] Fallback trying: {mod_info.name}.{name}")
             try:
                 instance = obj(client=stream_client)
-                print(f"[Agent] ✅ Edge created: edge.{mod_name}.{name}")
+                print(f"[Agent] ✅ Edge fallback: {name}")
                 return instance
-            except TypeError as e1:
+            except TypeError:
                 try:
                     instance = obj()
                     instance.client = stream_client
-                    print(f"[Agent] ✅ Edge created (no-arg): edge.{mod_name}.{name}")
+                    print(f"[Agent] ✅ Edge fallback (no-arg): {name}")
                     return instance
-                except Exception as e2:
-                    print(f"[Agent] {name} failed: {e1} / {e2}")
-            except Exception as e:
-                print(f"[Agent] {name} failed: {e}")
+                except Exception as e:
+                    print(f"[Agent] {name} failed: {e}")
 
-    # Last resort: dump all subclasses of EdgeTransport for debugging
-    all_subs = [c.__name__ for c in EdgeTransport.__subclasses__()]
-    print(f"[Agent] EdgeTransport subclasses: {all_subs}")
-    raise RuntimeError(
-        f"No concrete EdgeTransport subclass found. Subclasses: {all_subs}"
-    )
+    raise RuntimeError("No concrete EdgeTransport subclass found after full scan.")
 
 
 async def run_agent(call_id: str, call_type: str = "default", exercise: str = "general"):
@@ -129,7 +145,7 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
     except Exception as e:
         print(f"[Agent] elevenlabs failed ({e}), using deepgram TTS")
         tts = deepgram.TTS(model=os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-orion-en"))
-        print(f"[Agent] ✅ TTS: deepgram")
+        print("[Agent] ✅ TTS: deepgram")
 
     agent = Agent(
         edge=edge,
