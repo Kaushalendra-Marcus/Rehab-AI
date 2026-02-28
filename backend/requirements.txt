@@ -9,3 +9,4 @@ google-generativeai
 ultralytics
 aiohttp
 python-multipart
+websockets
