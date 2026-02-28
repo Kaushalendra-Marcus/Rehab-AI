@@ -1,4 +1,4 @@
-"""
+﻿"""
 RehabAI Backend API Server
 Run: uv run uvicorn server:app --reload --port 8000
 """
@@ -25,6 +25,7 @@ app = FastAPI(title="RehabAI Backend", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://rehab-ai-physical-therapy-system.vercel.app",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
@@ -80,7 +81,7 @@ async def get_token(user_id: str = "patient-001"):
             {"id": AGENT_USER_ID, "name": "REHAB AI", "role": "admin"},
         ])
         token = chat.create_token(user_id)
-        print(f"[RehabAI] ✅ Token issued for user '{user_id}'")
+        print(f"[RehabAI] âœ… Token issued for user '{user_id}'")
         return {"token": token, "api_key": os.environ["STREAM_API_KEY"]}
     except HTTPException:
         raise
@@ -104,15 +105,15 @@ async def start_agent(req: StartAgentRequest):
         chat = StreamChat(api_key=key, api_secret=secret)
         chat.upsert_user({"id": AGENT_USER_ID, "name": "REHAB AI", "role": "admin"})
         agent_token = chat.create_token(AGENT_USER_ID)
-        print(f"[RehabAI] ✅ Agent user upserted + token generated for '{AGENT_USER_ID}'")
+        print(f"[RehabAI] âœ… Agent user upserted + token generated for '{AGENT_USER_ID}'")
     except Exception as e:
-        print(f"[RehabAI] ❌ Stream setup failed: {e}")
+        print(f"[RehabAI] âŒ Stream setup failed: {e}")
         raise HTTPException(status_code=500, detail=f"Stream setup failed: {e}")
 
     print(f"\n{'='*50}")
     print(f"[RehabAI] Starting agent: call_id={req.call_id} exercise={req.exercise}")
 
-    # ✅ Windows fix: use threading.Thread instead of asyncio.create_subprocess_exec
+    # âœ… Windows fix: use threading.Thread instead of asyncio.create_subprocess_exec
     _launch_agent_thread(req.call_id, req.exercise, agent_token)
 
     return {"status": "agent_launching", "call_id": req.call_id}
@@ -148,17 +149,17 @@ def _launch_agent_thread(call_id: str, exercise: str, agent_token: str):
             proc.wait()
             code = proc.returncode
             if code == 0:
-                print(f"[RehabAI] ✅ Agent finished cleanly")
+                print(f"[RehabAI] âœ… Agent finished cleanly")
             else:
-                print(f"[RehabAI] ❌ Agent exited with code {code}")
+                print(f"[RehabAI] âŒ Agent exited with code {code}")
         except Exception as e:
-            print(f"[RehabAI] ❌ Launch failed: {e}")
+            print(f"[RehabAI] âŒ Launch failed: {e}")
             import traceback
             traceback.print_exc()
 
     t = threading.Thread(target=run_in_thread, daemon=True)
     t.start()
-    print(f"[RehabAI] ✅ Agent thread launched")
+    print(f"[RehabAI] âœ… Agent thread launched")
 
 
 if __name__ == "__main__":
