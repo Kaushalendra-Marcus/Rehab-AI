@@ -1,7 +1,6 @@
 ﻿"""
 RehabAI - Real-time Physical Therapy Coach Agent
 Uses: anthropic (LLM), deepgram (STT), elevenlabs (TTS)
-Edge: vision_agents.core.edge.call concrete implementation
 """
 import os
 import asyncio
@@ -53,44 +52,49 @@ Use this to give precise real-time voice coaching.
 
 def _find_concrete_edge(stream_client):
     """
-    Find concrete (non-abstract, non-Protocol) edge implementation
-    by scanning vision_agents.core.edge submodules.
+    Find concrete EdgeTransport subclass in vision_agents.core.edge submodules.
+    Only picks classes that are actual subclasses of EdgeTransport (not abstract, not events).
     """
-    from vision_agents.core import edge as _edge_mod
+    from vision_agents.core.edge import EdgeTransport
 
-    # Scan all submodules for concrete classes
-    for mod_info in pkgutil.iter_modules(_edge_mod.__path__):
-        mod = importlib.import_module(f"vision_agents.core.edge.{mod_info.name}")
+    submodule_names = ["edge_transport", "call"]  # most likely locations first
+
+    for mod_name in submodule_names:
+        try:
+            mod = importlib.import_module(f"vision_agents.core.edge.{mod_name}")
+        except ImportError:
+            continue
+
         for name, obj in inspect.getmembers(mod, inspect.isclass):
-            if name.startswith("_"):
+            # Must be a subclass of EdgeTransport but not EdgeTransport itself
+            if obj is EdgeTransport:
                 continue
-            # Skip abstract classes and Protocols
+            if not issubclass(obj, EdgeTransport):
+                continue
             if inspect.isabstract(obj):
                 continue
-            if hasattr(obj, "__protocol_attrs__"):
-                continue
-            # Must be defined in this module (not imported)
-            if obj.__module__ != mod.__name__:
-                continue
-            print(f"[Agent] Trying edge: {mod_info.name}.{name}")
+
+            print(f"[Agent] Trying edge: {mod_name}.{name}")
             try:
                 instance = obj(client=stream_client)
-                print(f"[Agent] ✅ Edge created: edge.{mod_info.name}.{name}")
+                print(f"[Agent] ✅ Edge created: edge.{mod_name}.{name}")
                 return instance
             except TypeError as e1:
                 try:
                     instance = obj()
                     instance.client = stream_client
-                    print(f"[Agent] ✅ Edge created (no-arg): edge.{mod_info.name}.{name}")
+                    print(f"[Agent] ✅ Edge created (no-arg): edge.{mod_name}.{name}")
                     return instance
                 except Exception as e2:
                     print(f"[Agent] {name} failed: {e1} / {e2}")
             except Exception as e:
                 print(f"[Agent] {name} failed: {e}")
 
+    # Last resort: dump all subclasses of EdgeTransport for debugging
+    all_subs = [c.__name__ for c in EdgeTransport.__subclasses__()]
+    print(f"[Agent] EdgeTransport subclasses: {all_subs}")
     raise RuntimeError(
-        "No concrete edge implementation found. "
-        "Check vision_agents.core.edge submodules in logs above."
+        f"No concrete EdgeTransport subclass found. Subclasses: {all_subs}"
     )
 
 
@@ -109,28 +113,23 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
         stream_client.token = agent_token
         print(f"[Agent] ✅ Authenticated as '{agent_id}'")
 
-    # Edge — scan for concrete implementation
     edge = _find_concrete_edge(stream_client)
 
-    # LLM — anthropic directly (gemini not available)
     model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-5")
     llm = anthropic.LLM(model=model)
     print(f"[Agent] ✅ LLM: anthropic {model}")
 
-    # STT
     stt_model = os.environ.get("DEEPGRAM_MODEL", "nova-2")
     stt = deepgram.STT(model=stt_model)
     print(f"[Agent] ✅ STT: deepgram {stt_model}")
 
-    # TTS
     try:
         tts = elevenlabs.TTS()
         print("[Agent] ✅ TTS: elevenlabs")
     except Exception as e:
         print(f"[Agent] elevenlabs failed ({e}), using deepgram TTS")
-        tts_model = os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-orion-en")
-        tts = deepgram.TTS(model=tts_model)
-        print(f"[Agent] ✅ TTS: deepgram {tts_model}")
+        tts = deepgram.TTS(model=os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-orion-en"))
+        print(f"[Agent] ✅ TTS: deepgram")
 
     agent = Agent(
         edge=edge,
