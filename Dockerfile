@@ -2,35 +2,27 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# System dependencies - minimal
 RUN apt-get update && apt-get install -y \
     gcc \
-    libavformat-dev \
-    libavcodec-dev \
-    libavdevice-dev \
-    libavutil-dev \
-    libswscale-dev \
-    libswresample-dev \
-    libavfilter-dev \
-    pkg-config \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/ .
 
+# Core packages first (fast)
 RUN pip install --no-cache-dir \
     fastapi \
     "uvicorn[standard]" \
     python-dotenv \
     stream-chat \
-    "getstream[telemetry,webrtc]" \
+    getstream \
     deepgram-sdk \
     google-generativeai \
-    ultralytics \
     aiohttp \
     python-multipart \
     websockets \
-    "aiortc>=1.13.0" \
     opencv-python-headless \
     numpy \
     pillow \
@@ -45,14 +37,23 @@ RUN pip install --no-cache-dir \
     protobuf \
     pydantic-settings \
     python-dateutil \
-    onnxruntime \
     mcp \
-    daily-python \
-    stratz \
     anthropic \
     elevenlabs \
     cartesia
 
+# Heavy packages separately (so cache works if above didn't change)
+RUN pip install --no-cache-dir \
+    "aiortc>=1.13.0" \
+    daily-python \
+    stratz
+
+# ultralytics without full torch (much smaller)
+RUN pip install --no-cache-dir \
+    onnxruntime \
+    ultralytics --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Vision agents plugins
 RUN pip install --no-cache-dir \
     vision-agents-plugins-deepgram \
     vision-agents-plugins-elevenlabs \
