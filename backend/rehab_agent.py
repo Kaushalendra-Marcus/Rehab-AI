@@ -1,7 +1,6 @@
 ﻿"""
 RehabAI - Real-time Physical Therapy Coach Agent
-Uses: anthropic (LLM), deepgram (STT), elevenlabs (TTS)
-Edge: vision-agents-plugins-getstream (GetStream concrete EdgeTransport)
+Uses: anthropic (LLM), deepgram (STT), elevenlabs (TTS), getstream (Edge)
 """
 import os
 import asyncio
@@ -62,15 +61,28 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
     if agent_token:
         stream_client.token = agent_token
         print(f"[Agent] ✅ Authenticated as '{agent_id}'")
-    else:
-        print(f"[Agent] ⚠️  No STREAM_AGENT_TOKEN")
 
-    # Edge — getstream plugin provides concrete EdgeTransport implementation
+    # Fetch TURN credentials from Stream (needed for Railway's network)
+    try:
+        ice_response = await stream_client.video.get_call_edge_server(
+            call_id=call_id,
+            call_type=call_type,
+        )
+        ice_servers = ice_response.ice_servers if hasattr(ice_response, 'ice_servers') else []
+        print(f"[Agent] ✅ TURN/ICE servers fetched: {len(ice_servers)}")
+    except Exception as e:
+        print(f"[Agent] ⚠️  Could not fetch TURN servers ({e}), using STUN only")
+        ice_servers = [
+            {"urls": "stun:stun.l.google.com:19302"},
+            {"urls": "stun:stun1.l.google.com:19302"},
+        ]
+
+    # Edge
     edge = getstream.Edge()
     edge.client = stream_client
     print(f"[Agent] ✅ Edge: getstream.Edge")
 
-    # LLM — anthropic
+    # LLM
     model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-5")
     llm = anthropic.LLM(model=model)
     print(f"[Agent] ✅ LLM: anthropic {model}")
@@ -85,7 +97,7 @@ async def run_agent(call_id: str, call_type: str = "default", exercise: str = "g
         tts = elevenlabs.TTS()
         print("[Agent] ✅ TTS: elevenlabs")
     except Exception as e:
-        print(f"[Agent] elevenlabs failed ({e}), using deepgram TTS")
+        print(f"[Agent] elevenlabs failed ({e}), using deepgram")
         tts = deepgram.TTS(model=os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-orion-en"))
         print("[Agent] ✅ TTS: deepgram")
 
