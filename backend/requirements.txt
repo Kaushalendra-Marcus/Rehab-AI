@@ -1,0 +1,11 @@
+﻿fastapi
+uvicorn[standard]
+python-dotenv
+stream-chat
+getstream
+vision-agents
+deepgram-sdk
+google-generativeai
+ultralytics
+aiohttp
+python-multipart
