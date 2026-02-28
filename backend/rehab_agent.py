@@ -76,26 +76,22 @@ def _find_edge(stream_client):
                 edge.client = stream_client
                 return edge
 
-    # Search submodules
-    try:
-        for m in pkgutil.iter_modules(_edge_mod.__path__):
-            mod = importlib.import_module(f"vision_agents.core.edge.{m.name}")
-            for name in dir(mod):
-                if name.startswith("_"):
-                    continue
-                obj = getattr(mod, name)
-                if isinstance(obj, type) and ("edge" in name.lower() or "stream" in name.lower()):
-                    print(f"[Agent] ✅ Found in submodule: edge.{m.name}.{name}")
-                    try:
-                        return obj(client=stream_client)
-                    except TypeError:
-                        inst = obj()
-                        inst.client = stream_client
-                        return inst
-    except Exception as e:
-        print(f"[Agent] Submodule edge search error: {e}")
+    # EdgeTransport is the correct edge class for GetStream
+    for cls_name in ["EdgeTransport", "Call"]:
+        cls = getattr(_edge_mod, cls_name, None)
+        if cls is not None:
+            print(f"[Agent] ✅ Found edge class: vision_agents.core.edge.{cls_name}")
+            try:
+                return cls(client=stream_client)
+            except TypeError:
+                try:
+                    inst = cls()
+                    inst.client = stream_client
+                    return inst
+                except Exception as e2:
+                    print(f"[Agent] {cls_name} init failed: {e2}")
 
-    raise RuntimeError(f"No GetStream edge class found. edge members: {members}")
+    raise RuntimeError(f"No edge class found. Available: {members}")
 
 
 def _find_llm():
